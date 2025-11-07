@@ -31,6 +31,18 @@ pip install matplotlib
 
 ## Usage
 
+### Default Location
+
+The script uses **38.13°N, 4.13°E** as the default location. This coordinate point is located in the **Western Mediterranean Sea**, approximately:
+
+- **Geographic Region**: Western Mediterranean Basin
+- **Proximity**: Off the eastern coast of Spain, in the Balearic Sea region
+- **Distance from Coast**: Approximately 50-100 km east of the Spanish mainland
+- **Water Body**: Mediterranean Sea (specifically the Balearic Sea sub-basin)
+- **Oceanographic Context**: This region is part of the Western Mediterranean, which experiences distinct seasonal temperature variations and is influenced by Atlantic water inflow through the Strait of Gibraltar
+
+This location was chosen as a representative example for Mediterranean Sea Surface Temperature analysis, demonstrating typical SST patterns and trends in this semi-enclosed sea basin.
+
 ### Basic Usage
 
 Generate a graph for the default location (38.13°N, 4.13°E - Mediterranean):
@@ -172,6 +184,7 @@ If requests timeout:
 - **Endpoint**: `/api/sst/point`
 - **Authentication**: X-API-Key header
 - **Data Source**: NOAA Optimum Interpolation Sea Surface Temperature (OISST)
+- **Data Attribution**: All API responses include embedded data attribution information for proper citation and compliance with data source requirements
 
 ## Notes
 

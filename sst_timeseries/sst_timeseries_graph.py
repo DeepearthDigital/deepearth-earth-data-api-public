@@ -11,6 +11,7 @@ Usage:
 """
 
 import sys
+import os
 import argparse
 import logging
 from datetime import datetime
@@ -18,8 +19,16 @@ from typing import List, Tuple, Optional
 import time
 
 import requests
+import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+
+# Try to load python-dotenv if available
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, will use environment variables or defaults
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,11 +40,18 @@ logger = logging.getLogger(__name__)
 # API Configuration
 API_BASE_URL = "https://api.deepearth.digital"
 API_ENDPOINT = "/api/sst/point"
-API_KEY = "sst_83fd13d1b4f67420ebd3f29423cbb94bf96afcfe737b61ac47d84f7b29c6ac3f"
+# Load API key from environment variable, with fallback to default
+API_KEY = os.getenv("API_KEY", "fallback_api_key")
 
 # Default location (Mediterranean)
 DEFAULT_LAT = 38.13
 DEFAULT_LON = 4.13
+
+# Default output directory (relative to script location)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+DEFAULT_OUTPUT_DIR = os.path.join(PROJECT_ROOT, 'example_output')
+DEFAULT_OUTPUT_FILE = os.path.join(DEFAULT_OUTPUT_DIR, 'sst_timeseries.png')
 
 
 def fetch_sst_data(
@@ -107,9 +123,9 @@ def fetch_sst_data(
     return None
 
 
-def generate_monthly_dates(start_year: int, end_year: int) -> List[str]:
+def generate_yearly_dates(start_year: int, end_year: int) -> List[str]:
     """
-    Generate list of dates (first of each month) from start_year to end_year.
+    Generate list of dates (6th November) for each year from start_year to end_year.
     
     Args:
         start_year: Starting year (inclusive)
@@ -119,16 +135,8 @@ def generate_monthly_dates(start_year: int, end_year: int) -> List[str]:
         List of date strings in YYYY-MM-DD format
     """
     dates = []
-    current_date = datetime(start_year, 1, 1)
-    end_date = datetime(end_year, 12, 31)
-    
-    while current_date <= end_date:
-        dates.append(current_date.strftime('%Y-%m-%d'))
-        # Move to first of next month
-        if current_date.month == 12:
-            current_date = datetime(current_date.year + 1, 1, 1)
-        else:
-            current_date = datetime(current_date.year, current_date.month + 1, 1)
+    for year in range(start_year, end_year + 1):
+        dates.append(datetime(year, 11, 6).strftime('%Y-%m-%d'))
     
     return dates
 
@@ -155,18 +163,18 @@ def collect_timeseries_data(
     Returns:
         Tuple of (dates, temperatures, anomalies)
     """
-    dates_str = generate_monthly_dates(start_year, end_year)
+    dates_str = generate_yearly_dates(start_year, end_year)
     dates = [datetime.strptime(d, '%Y-%m-%d') for d in dates_str]
     
     temperatures = []
     anomalies = []
     
     total = len(dates_str)
-    logger.info(f"Collecting data for {total} monthly samples from {start_year} to {end_year}...")
+    logger.info(f"Collecting data for {total} yearly samples (6th November) from {start_year} to {end_year}...")
     
     for i, date_str in enumerate(dates_str):
         # Show progress
-        if (i + 1) % 12 == 0 or i == 0:
+        if (i + 1) % 5 == 0 or i == 0:
             logger.info(f"Progress: {i + 1}/{total} ({100 * (i + 1) / total:.1f}%)")
         
         # Fetch mean (temperature)
@@ -190,7 +198,7 @@ def create_graph(
     anomalies: List[Optional[float]],
     lat: float,
     lon: float,
-    output_file: str = "sst_timeseries.png"
+    output_file: str = DEFAULT_OUTPUT_FILE
 ) -> None:
     """
     Create and save a time series graph showing both temperature and anomaly.
@@ -221,12 +229,36 @@ def create_graph(
     ax1.tick_params(axis='y', labelcolor=color1)
     ax1.grid(True, alpha=0.3)
     
+    # Calculate and plot temperature trend line
+    if len(temp_dates) > 1 and len(temp_values) > 1:
+        # Convert dates to numeric values (days since epoch) for regression
+        temp_dates_numeric = mdates.date2num(temp_dates)
+        # Calculate linear trend
+        temp_trend = np.polyfit(temp_dates_numeric, temp_values, 1)
+        temp_trend_line = np.poly1d(temp_trend)
+        # Plot trend line
+        ax1.plot(temp_dates, temp_trend_line(temp_dates_numeric), 
+                color=color1, linestyle='--', linewidth=2, 
+                label='Temperature Trend', alpha=0.6)
+    
     # Plot anomaly on right y-axis
     ax2 = ax1.twinx()
     color2 = 'tab:red'
     ax2.set_ylabel('SST Anomaly (°C)', color=color2, fontsize=12)
     line2 = ax2.plot(anom_dates, anom_values, color=color2, linewidth=1.5, label='Anomaly', alpha=0.8)
     ax2.tick_params(axis='y', labelcolor=color2)
+    
+    # Calculate and plot anomaly trend line
+    if len(anom_dates) > 1 and len(anom_values) > 1:
+        # Convert dates to numeric values (days since epoch) for regression
+        anom_dates_numeric = mdates.date2num(anom_dates)
+        # Calculate linear trend
+        anom_trend = np.polyfit(anom_dates_numeric, anom_values, 1)
+        anom_trend_line = np.poly1d(anom_trend)
+        # Plot trend line
+        ax2.plot(anom_dates, anom_trend_line(anom_dates_numeric), 
+                color=color2, linestyle='--', linewidth=2, 
+                label='Anomaly Trend', alpha=0.6)
     
     # Format x-axis dates
     ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
@@ -236,20 +268,28 @@ def create_graph(
     
     # Add title
     plt.title(
-        f'SST Time Series: Temperature and Anomaly\n'
+        f'SST Time Series: Temperature and Anomaly (6th November)\n'
         f'Location: {lat}°N, {lon}°E (1981-2025)',
         fontsize=14,
         fontweight='bold',
         pad=20
     )
     
-    # Add legend
-    lines = line1 + line2
-    labels = [l.get_label() for l in lines]
-    ax1.legend(lines, labels, loc='upper left', fontsize=10)
+    # Add legend - collect all lines from both axes
+    lines1 = ax1.get_lines()
+    lines2 = ax2.get_lines()
+    all_lines = lines1 + lines2
+    labels = [l.get_label() for l in all_lines]
+    ax1.legend(all_lines, labels, loc='upper left', fontsize=10)
     
     # Adjust layout
     fig.tight_layout()
+    
+    # Ensure output directory exists
+    output_dir = os.path.dirname(output_file)
+    if output_dir and not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
+        logger.info(f"Created output directory: {output_dir}")
     
     # Save figure
     plt.savefig(output_file, dpi=300, bbox_inches='tight')
@@ -291,8 +331,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument(
         '--output',
         type=str,
-        default='sst_timeseries.png',
-        help='Output filename (default: sst_timeseries.png)'
+        default=DEFAULT_OUTPUT_FILE,
+        help=f'Output filename (default: {DEFAULT_OUTPUT_FILE})'
     )
     parser.add_argument(
         '--api-key',
